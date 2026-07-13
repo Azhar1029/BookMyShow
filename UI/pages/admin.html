@@ -31,6 +31,7 @@
         <button class="tab" onclick="switchTab('screens', this)">Screens</button>
         <button class="tab" onclick="switchTab('seats', this)">Seats</button>
         <button class="tab" onclick="switchTab('shows', this)">Shows</button>
+        <button class="tab" onclick="switchTab('users', this)">Users</button>
     </div>
 
     <!-- ===== CITIES TAB ===== -->
@@ -194,6 +195,13 @@
             <button class="btn btn-primary" onclick="addShow()">Add Show</button>
         </div>
         <div id="shows-table"></div>
+    </div>
+
+    <div id="tab-users" class="tab-content" style="display:none;">
+        <p style="color:var(--text-muted); margin-bottom:1rem;">
+            Click a user to view their booking history. Passwords are never exposed by the API, by design.
+        </p>
+        <div id="users-table"></div>
     </div>
 </div>
 
@@ -438,9 +446,69 @@
         } catch (e) { showToast(e.message, 'error'); }
     }
 
+    // ===== USERS =====
+    async function loadUsers() {
+        showLoading('users-table');
+        try {
+            const users = await UserAPI.getAll();
+            let html = '<table class="data-table"><thead><tr><th></th><th>ID</th><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Joined</th></tr></thead><tbody>';
+            users.forEach(u => {
+                html += `<tr style="cursor:pointer;" onclick="toggleUserBookings(${u.id})">
+                    <td id="user-caret-${u.id}">▸</td>
+                    <td>${u.id}</td><td>${u.name}</td><td>${u.email}</td>
+                    <td>${u.phone || ''}</td><td>${u.role}</td>
+                    <td>${u.createdAt ? new Date(u.createdAt).toLocaleDateString() : ''}</td>
+                </tr>
+                <tr id="user-bookings-${u.id}" style="display:none;">
+                    <td colspan="7" id="user-bookings-content-${u.id}" style="background:rgba(255,255,255,0.03);"></td>
+                </tr>`;
+            });
+            html += '</tbody></table>';
+            document.getElementById('users-table').innerHTML = users.length ? html : '<div class="empty-state"><p>No users yet</p></div>';
+        } catch (e) {
+            document.getElementById('users-table').innerHTML = '<div class="empty-state"><p>Could not load users</p></div>';
+        }
+    }
+
+    async function toggleUserBookings(userId) {
+        const row = document.getElementById(`user-bookings-${userId}`);
+        const caret = document.getElementById(`user-caret-${userId}`);
+        const isOpen = row.style.display !== 'none';
+
+        if (isOpen) {
+            row.style.display = 'none';
+            caret.textContent = '▸';
+            return;
+        }
+        row.style.display = '';
+        caret.textContent = '▾';
+
+        const contentCell = document.getElementById(`user-bookings-content-${userId}`);
+        contentCell.innerHTML = '<p style="padding:0.5rem;color:var(--text-muted);">Loading bookings...</p>';
+
+        try {
+            const bookings = await BookingAPI.getByUser(userId);
+            if (!bookings.length) {
+                contentCell.innerHTML = '<p style="padding:0.5rem;color:var(--text-muted);">No bookings for this user.</p>';
+                return;
+            }
+            contentCell.innerHTML = bookings.map(b => `
+                <div style="padding:0.5rem 1rem; border-bottom:1px solid rgba(255,255,255,0.05);">
+                    🎬 <strong>${b.show?.movie?.title || 'Movie'}</strong>
+                    — ${b.show?.showDate || ''} ${b.show?.startTime || ''}
+                    — Seats: ${b.seats ? b.seats.map(s => s.seatNumber).join(', ') : 'N/A'}
+                    — ₹${b.totalPrice || 0}
+                    — <span style="color:${b.status === 'CANCELLED' ? 'var(--accent)' : b.status === 'PENDING_PAYMENT' ? '#e6a700' : 'var(--success)'};">${b.status}</span>
+                </div>
+            `).join('');
+        } catch (e) {
+            contentCell.innerHTML = `<p style="padding:0.5rem;color:var(--accent);">Could not load bookings: ${e.message}</p>`;
+        }
+    }
+
     // ===== INIT =====
     async function init() {
-        await Promise.all([loadCities(), loadMovies(), loadTheaters(), loadScreens(), loadShows()]);
+        await Promise.all([loadCities(), loadMovies(), loadTheaters(), loadScreens(), loadShows(), loadUsers()]);
     }
     init();
 </script>
