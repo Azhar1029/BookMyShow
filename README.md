@@ -13,13 +13,13 @@ This project was built as a portfolio piece to demonstrate a real, end-to-end bo
 - [Project Structure](#project-structure)
 - [Prerequisites](#prerequisites)
 - [Getting Started](#getting-started)
-  - [1. Clone the repository](#1-clone-the-repository)
-  - [2. Set up MySQL](#2-set-up-mysql)
-  - [3. Set up Kafka (via Docker)](#3-set-up-kafka-via-docker)
-  - [4. Configure secrets](#4-configure-secrets)
-  - [5. Run the backend](#5-run-the-backend)
-  - [6. Run the frontend](#6-run-the-frontend)
-  - [7. Log in](#7-log-in)
+    - [1. Clone the repository](#1-clone-the-repository)
+    - [2. Set up MySQL](#2-set-up-mysql)
+    - [3. Set up Kafka (via Docker)](#3-set-up-kafka-via-docker)
+    - [4. Configure secrets](#4-configure-secrets)
+    - [5. Run the backend](#5-run-the-backend)
+    - [6. Run the frontend](#6-run-the-frontend)
+    - [7. Log in](#7-log-in)
 - [API Overview](#api-overview)
 - [Known Limitations](#known-limitations)
 - [License](#license)
@@ -33,6 +33,7 @@ This project was built as a portfolio piece to demonstrate a real, end-to-end bo
 - Passwords hashed with BCrypt (never stored or returned in plaintext)
 - Role-based access control (`USER` / `ADMIN`) enforced at the API layer, not just the UI
 - Distinct `401` (not authenticated) vs `403` (authenticated, not authorized) responses
+- Ownership checks on personal data — a regular user can only view their own booking history; only an admin can view anyone's
 
 **Browsing**
 - Anonymous browsing of movies, theaters, cities, screens, and showtimes — no login required until booking
@@ -57,6 +58,7 @@ This project was built as a portfolio piece to demonstrate a real, end-to-end bo
 **Admin Panel**
 - Full CRUD for movies (add/update/delete, including poster URL)
 - Add/manage cities, theaters, screens, seats, and shows
+- **Users tab**: view every registered user (name, email, phone, role, join date) and drill into any user's full booking history — passwords are never exposed by the API (bcrypt hashes are excluded from every response, not just hidden in the UI)
 - Admin-only endpoints enforced server-side (`hasRole("ADMIN")`), not just hidden in the UI
 
 ---
@@ -211,12 +213,17 @@ The backend's CORS configuration already allows any `localhost`/`127.0.0.1` orig
 
 Use one of the seeded accounts (all passwords are `pass123`):
 
-| Email | Role |
-|---|---|
-| `rahul@example.com` | ADMIN |
-| `priya@example.com` | USER |
-| `amit@example.com` | USER |
-| `sneha@example.com` | USER |
+| Name | Email | Role | Pre-seeded booking |
+|---|---|---|---|
+| Rahul Sharma | `rahul@example.com` | ADMIN | Pushpa 2 — 15 Mar, 10:00 AM (Screen 1), seats A1–A2, ₹500 — **CONFIRMED** |
+| Priya Patel | `priya@example.com` | USER | Jawan — 15 Mar, 11:00 AM (Screen 2), seat A1, ₹200 — **CONFIRMED** |
+| Amit Kumar | `amit@example.com` | USER | Animal — 15 Mar, 6:00 PM (IMAX), seats A1–A2, ₹900 — **CONFIRMED** |
+| Sneha Reddy | `sneha@example.com` | USER | Pushpa 2 — 15 Mar, 10:00 AM (Screen 1), seat A3, ₹250 — **CANCELLED** |
+
+These aren't just filler rows — they're set up so **My Bookings** already has something to show the moment you log in, without needing to make a fresh booking first:
+- Log in as **Rahul** to see both the Admin Panel (as ADMIN) and a confirmed booking in the same account.
+- Log in as **Amit** to see what a multi-seat, premium-screen (IMAX) confirmed booking looks like.
+- Log in as **Sneha** to see how a cancelled booking is displayed (and confirm that seat A3 on that same Screen 1 show is available again for someone else to book).
 
 Or register a new account through the UI — new users default to `USER`. To promote any account to `ADMIN`, run:
 
@@ -235,9 +242,11 @@ All endpoints are prefixed with `/api`.
 |---|---|---|
 | Auth | `POST /auth/login` | No |
 | Users | `POST /users/register` | No |
+| Users | `GET /users`, `GET /users/{id}` | Yes — `ADMIN` only |
 | Movies / Theaters / Cities / Screens / Seats / Shows | `GET` endpoints | No (public browsing) |
 | Movies / Theaters / Cities / Screens / Seats / Shows | `POST` / `PUT` / `DELETE` | Yes — `ADMIN` only |
-| Bookings | `POST /bookings`, `GET /bookings/user/{id}` | Yes — any authenticated user |
+| Bookings | `POST /bookings` | Yes — any authenticated user |
+| Bookings | `GET /bookings/user/{id}` | Yes — the booking owner, or an `ADMIN` |
 | Payments | `POST /payments/orders`, `POST /payments/verify` | Yes |
 
 ---
