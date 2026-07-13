@@ -56,6 +56,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/public/**").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/users/register").permitAll()
+                        // Every other /api/users/** GET exposes other people's name/email/phone -
+                        // admin only. (register above is POST, so it isn't caught by this.)
+                        .requestMatchers(HttpMethod.GET, "/api/users/**").hasRole("ADMIN")
                         // Browsing is anonymous (booking/payment still require a JWT below)
                         .requestMatchers(HttpMethod.GET, "/api/movies/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/theaters/**").permitAll()
