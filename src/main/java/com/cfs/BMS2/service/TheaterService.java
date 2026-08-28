@@ -7,6 +7,8 @@ import com.cfs.BMS2.entity.Theater;
 import com.cfs.BMS2.repository.CityRepository;
 import com.cfs.BMS2.repository.TheaterRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.text.CharacterIterator;
@@ -20,6 +22,7 @@ public class TheaterService {
     private final CityService cityService;
 
 
+    @CacheEvict(value = {"theaters", "theater", "theatersByCity"}, allEntries = true)
     public Theater addTheater(TheaterRequest request)
     {
         City city=cityService.getCityById(request.getCityId());
@@ -31,11 +34,13 @@ public class TheaterService {
         return theaterRepository.save(theater);
     }
 
+    @Cacheable("theaters")
     public List<Theater> getAllTheaters()
     {
         return theaterRepository.findAll();
     }
 
+    @Cacheable(value = "theater", key = "#id")
     public Theater getTheaterById(Long id)
     {
         return theaterRepository.findById(id)
@@ -43,6 +48,7 @@ public class TheaterService {
 
     }
 
+    @Cacheable(value = "theatersByCity", key = "#cityId")
     public List<Theater> getTheaterByCity(Long cityId)
     {
         return theaterRepository.findByCityId(cityId);

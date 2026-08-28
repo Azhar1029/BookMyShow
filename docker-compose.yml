@@ -31,3 +31,10 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
     depends_on:
       - zoo1
+
+  redis:
+    image: redis:7-alpine
+    hostname: redis
+    container_name: bms-redis
+    ports:
+      - "6379:6379"

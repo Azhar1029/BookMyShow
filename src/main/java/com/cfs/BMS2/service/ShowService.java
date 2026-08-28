@@ -7,6 +7,8 @@ import com.cfs.BMS2.entity.Screen;
 import com.cfs.BMS2.entity.Show;
 import com.cfs.BMS2.repository.ShowRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -21,6 +23,7 @@ public class ShowService {
     private final ScreenService screenService;
 
     //addshow
+    @CacheEvict(value = {"shows", "show", "showsByMovie", "showsByMovieAndDate"}, allEntries = true)
     public Show addShow(ShowRequest request)
     {
         Movie movie =movieService.getMovieById(request.getMovieId());
@@ -37,10 +40,13 @@ public class ShowService {
         return showRepository.save(show);
     }
 
+    @Cacheable("shows")
     public List<Show> getAllShow()
     {
         return showRepository.findAll();
     }
+
+    @Cacheable(value = "show", key = "#id")
     public Show getShowById(Long id)
     {
         return showRepository.findById(id)
@@ -48,26 +54,25 @@ public class ShowService {
 
     }
 
-    // Locking variant - only for use inside BookingService.createBooking's transaction,
-    // to serialize concurrent seat-booking attempts for the same show. Don't use this for
-    // plain reads (e.g. displaying show details) - it holds a DB row lock until the
-    // calling transaction commits.
     public Show getShowByIdForUpdate(Long id)
     {
         return showRepository.findByIdForUpdate(id)
                 .orElseThrow(()->new RuntimeException("Show not found with id: "+id));
     }
 
+    @Cacheable(value = "showsByMovie", key = "#movieId")
     public List<Show> getShowByMovie(Long movieId)
     {
         return showRepository.findByMovieId(movieId);
     }
 
+    @Cacheable(value = "showsByMovieAndDate", key = "#movieId + '-' + #date")
     public List<Show> getShowByMovieAndDate(Long movieId, LocalDate date)
     {
         return showRepository.findByMovieIdAndShowDate(movieId,date);
     }
 
+    @CacheEvict(value = {"shows", "show", "showsByMovie", "showsByMovieAndDate"}, allEntries = true)
     public Show updateShow(Long id, ShowRequest request)
     {
         Show show = getShowById(id);
@@ -82,6 +87,7 @@ public class ShowService {
         return showRepository.save(show);
     }
 
+    @CacheEvict(value = {"shows", "show", "showsByMovie", "showsByMovieAndDate"}, allEntries = true)
     public void deleteShow(Long id)
     {
         if (!showRepository.existsById(id)) {

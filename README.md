@@ -1,13 +1,30 @@
 # BookMyShow Clone (BMS-2)
 
-A full-stack movie ticket booking platform inspired by BookMyShow — built with **Spring Boot**, **Spring Security (JWT)**, **Apache Kafka**, **Razorpay**, and **MySQL** on the backend, with a vanilla HTML/CSS/JavaScript frontend.
+A full-stack movie ticket booking platform inspired by BookMyShow — built with **Spring Boot**, **Spring Security (JWT)**, **Apache Kafka**, **Redis**, **Razorpay**, and **MySQL** on the backend, with a vanilla HTML/CSS/JavaScript frontend.
 
-This project was built as a portfolio piece to demonstrate a real, end-to-end booking + payment + notification pipeline: browsing movies, selecting seats with concurrency-safe locking, paying through Razorpay, and receiving an automated confirmation email via a Kafka producer/consumer flow — all secured with role-based JWT authentication.
+This project was built as a portfolio piece to demonstrate a real, end-to-end booking + payment + notification pipeline: browsing movies, selecting seats with concurrency-safe locking, paying through Razorpay, and receiving an automated confirmation email via a Kafka producer/consumer flow — all secured with role-based JWT authentication, and backed by Redis caching on the read-heavy browse endpoints.
+
+---
+
+## Screenshots
+
+**Home** — city selector and "Now Showing" carousel
+![Home](Images/Home.jpg)
+
+**Movies** — full catalog with genre/language filtering
+![Movies](Images/Movies.jpg)
+
+**Theaters** — browsable by city, drills down into screens
+![Theaters](Images/Theaters.jpg)
+
+**My Bookings** — booking history with live status (Confirmed / Cancelled)
+![My Bookings](Images/My_Bookings.jpg)
 
 ---
 
 ## Table of Contents
 
+- [Screenshots](#screenshots)
 - [Features](#features)
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
@@ -15,7 +32,7 @@ This project was built as a portfolio piece to demonstrate a real, end-to-end bo
 - [Getting Started](#getting-started)
     - [1. Clone the repository](#1-clone-the-repository)
     - [2. Set up MySQL](#2-set-up-mysql)
-    - [3. Set up Kafka (via Docker)](#3-set-up-kafka-via-docker)
+    - [3. Set up Kafka + Redis (via Docker)](#3-set-up-kafka--redis-via-docker)
     - [4. Configure secrets](#4-configure-secrets)
     - [5. Run the backend](#5-run-the-backend)
     - [6. Run the frontend](#6-run-the-frontend)
@@ -55,6 +72,11 @@ This project was built as a portfolio piece to demonstrate a real, end-to-end bo
 - A separate Kafka consumer picks up the event and sends a confirmation email via Gmail SMTP
 - Configurable retry + error logging on the consumer side, so a failed email doesn't silently disappear
 
+**Performance**
+- Redis caches the read-heavy, rarely-changing catalog data (movies, theaters, cities, screens, seats, shows) so anonymous browsing doesn't hit MySQL on every request
+- Every admin write (add/update/delete) explicitly evicts the relevant cache, so browsing never serves stale data after an edit — verified directly against Redis (`redis-cli KEYS '*'`), not just assumed from the code
+- Live booking/seat-availability data is deliberately **never** cached — only the catalog metadata around it — and the DB row-lock used for booking concurrency is explicitly excluded from caching so it can never be silently bypassed
+
 **Admin Panel**
 - Full CRUD for movies (add/update/delete, including poster URL)
 - Add/manage cities, theaters, screens, seats, and shows
@@ -72,6 +94,7 @@ This project was built as a portfolio piece to demonstrate a real, end-to-end bo
 | Security | Spring Security 7 + JWT (`jjwt` 0.12.6) |
 | Persistence | Spring Data JPA / Hibernate + MySQL 8 |
 | Messaging | Apache Kafka (Confluent images, via Docker Compose) |
+| Caching | Redis (via Docker Compose) |
 | Payments | Razorpay Java SDK |
 | Email | Spring Mail (Gmail SMTP) |
 | Frontend | HTML, CSS, vanilla JavaScript (no framework/build step) |
@@ -84,7 +107,7 @@ This project was built as a portfolio piece to demonstrate a real, end-to-end bo
 ```
 BMS-2/
 ├── src/main/java/com/cfs/BMS2/
-│   ├── config/          # Security, CORS, Kafka consumer config
+│   ├── config/          # Security, CORS, Kafka consumer config, Redis cache config
 │   ├── controller/      # REST controllers
 │   ├── dto/             # Request/response DTOs
 │   ├── entity/          # JPA entities
@@ -99,8 +122,9 @@ BMS-2/
 │   ├── pages/
 │   ├── js/
 │   └── css/
+├── screenshots/         # README screenshots
 ├── BMS.sql              # Full schema + seed data
-├── docker-compose.yml   # Kafka + Zookeeper
+├── docker-compose.yml   # Kafka + Zookeeper + Redis
 ├── SetUpKafkaDocker.md  # Detailed Kafka/Docker command reference
 └── pom.xml
 ```
@@ -114,7 +138,7 @@ Make sure you have these installed before starting:
 - **Java 21** (JDK)
 - **Maven** (or use the included `mvnw` wrapper)
 - **MySQL 8**
-- **Docker** (for running Kafka + Zookeeper)
+- **Docker** (for running Kafka, Zookeeper, and Redis)
 - A **Razorpay** account (test mode is fine) for API keys
 - A **Gmail account with an App Password** (for sending confirmation emails — a normal Gmail password will not work; you need 2-Step Verification enabled and an [App Password](https://myaccount.google.com/apppasswords) generated)
 
@@ -141,15 +165,17 @@ mysql -u root -p < BMS.sql
 
 This seeds four test users (password `pass123` for all), with `rahul@example.com` pre-set as `ADMIN` and the rest as `USER` — log in as Rahul to access the Admin Panel out of the box.
 
-### 3. Set up Kafka (via Docker)
+### 3. Set up Kafka + Redis (via Docker)
 
-Start Zookeeper and the Kafka broker:
+`docker-compose.yml` brings up Zookeeper, the Kafka broker, and Redis together:
 
 ```bash
 docker-compose up
 ```
 
-Once both containers are running, create the Kafka topic this app actually uses for booking notifications. Exec into the Kafka container and run:
+Redis needs no further setup — it starts empty and just gets populated automatically as the app caches things. Kafka does need one manual step: creating the topic.
+
+Once all three containers are running, create the Kafka topic this app actually uses for booking notifications. Exec into the Kafka container and run:
 
 ```bash
 docker exec -it kafka1 kafka-topics --bootstrap-server kafka1:19092 --create --topic show-booking-notification --replication-factor 1 --partitions 1
@@ -164,6 +190,13 @@ docker exec -it kafka1 kafka-topics --bootstrap-server kafka1:19092 --list
 > `show-booking-notification` is the topic name configured in `application.properties` (`app.kafka.topic`). If you rename it there, use the matching name in the `--topic` flag above.
 >
 > See **`SetUpKafkaDocker.md`** for a much larger reference of Kafka commands (producing/consuming messages manually, multi-broker setups, consumer groups, inspecting logs, etc.) if you want to explore or debug the Kafka side directly.
+
+You can verify Redis is caching correctly at any point by exec-ing into it directly:
+
+```bash
+docker exec -it bms-redis redis-cli KEYS '*'
+```
+Hit any browse endpoint (e.g. `GET /api/movies`) and run that again — a new key should appear.
 
 ### 4. Configure secrets
 
@@ -256,10 +289,11 @@ All endpoints are prefixed with `/api`.
 Being upfront about a few tradeoffs and gaps, rather than hiding them:
 
 - **No automated tests yet.** Everything has been verified through manual end-to-end testing.
+- **Cache eviction is per-entity, not cross-entity.** Adding/editing/deleting a Movie evicts the `movies` cache, etc. — but since a cached `Screen` embeds its parent `Theater` and a cached `Show` embeds its `Movie`/`Screen`, an Edit feature added later for Theaters/Screens (see below) would also need to evict the dependent caches (`screens`, `shows`) to avoid serving stale nested data. Not an issue today since Theaters/Screens/Seats/Cities only support Add, not Edit, yet.
 - **Pessimistic locking on bookings** blocks concurrent requests for the same show rather than using optimistic retry — a reasonable tradeoff at this scale, but worth knowing if this ever needed to handle high concurrent load.
 - **No cascading deletes.** Deleting a theater/screen that still has dependent screens/seats will throw a database constraint error rather than a friendly message.
 - **Admin panel Edit forms** are complete for Movies; Theaters/Screens/Seats/Shows/Cities currently only support Add/Delete, not Edit, through the UI (the backend PUT endpoints exist and work — just not wired into the admin form yet for those five).
-- **Kafka runs locally via Docker Compose** in this setup. For a real deployment, this would need to point at a managed Kafka provider (or Kafka self-hosted on a VPS) instead of `localhost:9092`.
+- **Kafka and Redis both run locally via Docker Compose** in this setup. For a real deployment, these would need to point at a managed provider (e.g. a managed Kafka service and a managed Redis instance) instead of `localhost`.
 
 ---
 

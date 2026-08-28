@@ -5,6 +5,8 @@ import com.cfs.BMS2.entity.Movie;
 import com.cfs.BMS2.entity.Theater;
 import com.cfs.BMS2.repository.MovieRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -15,16 +17,19 @@ public class MovieService {
 
     private final MovieRepository movieRepository;
 
+    @CacheEvict(value = {"movies", "movie"}, allEntries = true)
     public Movie addMove(Movie movie)
     {
         return movieRepository.save(movie);
     }
 
+    @Cacheable("movies")
     public List<Movie> getAllMovies()
     {
         return movieRepository.findAll();
     }
 
+    @Cacheable(value = "movie", key = "#id")
     public Movie getMovieById(Long id)
     {
         return movieRepository.findById(id)
@@ -44,6 +49,7 @@ public class MovieService {
         return movieRepository.findByLanguage(language);
     }
 
+    @CacheEvict(value = {"movies", "movie"}, allEntries = true)
     public Movie updateMovie(Long id, Movie updated) {
         Movie movie = getMovieById(id);
         movie.setTitle(updated.getTitle());
@@ -57,6 +63,7 @@ public class MovieService {
         return movieRepository.save(movie);
     }
 
+    @CacheEvict(value = {"movies", "movie"}, allEntries = true)
     public void deleteMovie(Long id) {
         if (!movieRepository.existsById(id)) {
             throw new RuntimeException("Movie not found with id: " + id);
